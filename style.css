@@ -1,0 +1,112 @@
+body { font-family: sans-serif; padding: 20px; background: #f8f8f8; }
+
+
+.plain-greek{font-style:normal;}
+
+
+/* Two-column layout modeled after PFA calculator */
+.two-col{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items:start;
+}
+.two-col .col section, .two-col .col .model-panel{
+  background:#fff;
+  border-radius:12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+  padding:16px;
+  margin-bottom:16px;
+}
+@media (max-width: 1100px){
+  .two-col{ grid-template-columns: 1fr; }
+}
+/* Preserve existing app padding if present */
+.app{ max-width: 1400px; margin: 0 auto; }
+
+
+/* Chart sizing for comfortable two-column layout */
+.model-panel canvas,
+.hill-fit canvas{
+  width: 100% !important;
+  height: 340px !important;
+  max-height: 50vh;
+}
+
+
+/* V3.63: Larger, responsive charts for two-column layout */
+.model-panel canvas#modelChart,
+.hill-fit canvas#hillPlot{
+  width: 100% !important;
+  height: 520px !important;
+  max-height: 60vh;
+}
+
+
+/* V3.64: secondary names under predictor labels and even column distribution */
+.secondary-name{display:block;font-size:12px;color:#666;margin-top:2px}
+.predictor-grid>div{flex:1;min-width:0}
+
+/* V3.65: gentle vertical alignment for paired sections across columns */
+.align-pair-left { margin-top: 0; }
+.align-pair-right { margin-top: 0; }
+/* Ensure similar top spacing by nudging the earlier right column items */
+.two-col .col.right > section.hill-fit.align-pair-right { margin-top: 0; }
+
+canvas { image-rendering: auto; }
+
+
+/* V3.67: increase Program Output canvas height to 520px for improved text ratios */
+
+/* V3.68: enforce stable chart sizing across browsers/OS for Program Outputs */
+.model-panel { min-height: 640px; }
+.model-panel canvas#modelChart{ height: 560px !important; display:block; }
+@supports (-webkit-touch-callout: none) {
+  /* Safari/iOS specific nudge */
+  .model-panel canvas#modelChart{ height: 580px !important; }
+}
+
+/* V3.69 (fixed): compact input box sizing restored */
+input[type="number"], input[type="text"], select, textarea {
+  font-size: 14px;
+  padding: 6px 8px;
+  height: auto;
+  border-radius: 4px;
+}
+button {
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+
+
+/* V3.70: Improve Cmax Interpolation table spacing */
+#dataBody tr td { padding: 6px 14px; }
+#cmaxSectionContent table { margin-top: 12px; border-collapse: separate; border-spacing: 16px 12px; }
+#cmaxSectionContent th:nth-child(2) { white-space: normal; }
+
+
+/* V3.70: Cmax Interpolation table spacing and column breathing room */
+#cmaxTable { 
+  border-collapse: separate !important;
+  border-spacing: 24px 16px !important; /* horizontal | vertical */
+  width: 100%;
+  margin-top: 12px;
+}
+#cmaxTable th, #cmaxTable td { 
+  padding: 12px 14px !important; 
+  vertical-align: middle; 
+}
+#cmaxTable th:nth-child(2){ white-space: normal; } /* allow wrap */
+#dataBody tr { border-bottom: 8px solid transparent; } /* more vertical space between rows */
+
+/* V3.77: tighten Program Outputs subtitle spacing */
+#modelSubtitle { margin: 0 0 8px 0; }
+
+
+/* V3.80: spacing between Cmax, Arrhythmia, Concentration inputs */
+#riskForm>div{margin-bottom:12px;}
+
+/* V3.80: clear spacing between the three Cmax Interpolation rows */
+#riskForm > div { margin-bottom: 12px; }

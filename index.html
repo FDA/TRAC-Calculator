@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>TdP Risk Assessment Categorization (TRAC) Calculator</title>
+<link href="style.css" rel="stylesheet"/>
+<script defer="" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script defer="" src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<script defer="" src="script_v232.js"></script>
+<script defer="" src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.0/math.min.js"></script>
+</head>
+<body>
+<div class="app">
+<header style="background-color: rgb(40,124,188); color: white; padding: 20px; margin-bottom: 20px;">
+<h1 style="margin: 0;">TdP Risk Assessment Categorization (TRAC) Calculator</h1>
+</header>
+<div class="two-col">
+<!-- LEFT COLUMN -->
+<div class="col left"><section class="introduction">
+<h2>Introduction</h2>
+<p>The TdP risk assessment categorization calculator is used to assess the TdP risk of small molecule compounds using three (3) hiPSC-CM electrophysiological response predictors as part of the evolving Comprehensive In Vitro Proarrhythmia Assay (CiPA) paradigm.</p>
+</section><section class="predictors">
+<h2>Predictor Inputs</h2>
+<div class="predictor-grid" style="display:flex; gap:20px; margin-bottom:10px;">
+<div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+<label for="predictor1"><strong>Did drug-induced arrhythmia-like event occur at any concentration?</strong><br/><span class="secondary-name">Predictor 1</span></label>
+<p>Did drug-induced arrhythmia-like event occur at any concentration? 0=no arrhythmia, 1=type A arrhythmia, 2=any other arrhythmia type. <a href="https://pubmed.ncbi.nlm.nih.gov/30257217/#&gid=article-figures&pid=figure-1-uid-0" target="_blank">(Example)</a></p>
+<select id="predictor1">
+<option value="0">0</option>
+<option value="1">1</option>
+<option value="2">2</option>
+</select>
+</div>
+<div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+<label for="predictor4"><strong>Maximum Repolarization (ΔΔFPDc or ΔΔAPD90c)</strong><br/><span class="secondary-name">Predictor 4</span></label>
+<p>Maximum repolarization change observed at any concentration (ms).</p>
+<input id="predictor4" placeholder="-372 to 1280" step="any" type="number"/>
+</div>
+<div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+<label for="predictor7"><strong>Repolarization at Cmax (ΔΔFPDc or ΔΔAPD90c)</strong><br/><span class="secondary-name">Predictor 7</span></label>
+<p>Drug-induced repolarization change at expected Cmax (ms).</p>
+<input id="predictor7" placeholder="-100 to 303" step="any" type="number"/>
+</div>
+</div>
+<button id="predictorCalcBtn" type="button">Calculate</button>
+</section><section class="instructions">
+<h2>Instructions</h2>
+<ol>
+<li>For details on how to use the hiPSC-CM CiPA TdP Risk Categorization Tool, read the <a href="cou.html#coU" target="_blank">Context of Use (COU)</a>, which includes <a href="cou.html#limitations" target="_blank">limitations of use</a>.</li>
+<li>Insert the model predictor input parameters in the "Predictor Inputs" section. Ranges for Predictor 4 and Predictor 7 are shown in the input fields upon startup, they will be replaced when user inputs are entered.</li>
+<li>Read the outputs in the “Program Outputs” section to obtain the TdP risk categorization estimated by the selected parameters.</li>
+<li>Graphical depiction of the estimated TdP risk potential will be displayed in the “Program Outputs” section.</li>
+</ol>
+</section><section class="inputs collapsible align-pair-left">
+<h2 id="cmaxSectionHeader" style="cursor:pointer;">▸ Cmax Interpolation</h2>
+<div id="cmaxSectionContent" style="display:none;">
+<form id="riskForm">
+<div style="display:flex; align-items:center; gap:10px;">
+<label for="cmax" id="cmaxLabel">Cmax (<span class="plain-greek">µ</span>M)</label>
+<input id="cmax" placeholder="e.g. 150.5" required="" step="any" type="number"/>
+<button id="switchCmaxUnit" type="button">Switch Unit</button>
+</div>
+<div>
+<label for="arrhythmia">Arrhythmia Type</label>
+<select id="arrhythmia">
+<option value="0">None</option>
+<option value="1">Type A</option>
+<option value="2">Other</option>
+</select>
+</div>
+<div>
+<label style="margin-bottom:8px; display:block;">Concentration – Repolarization Inputs</label>
+<table id="cmaxTable">
+<thead>
+<tr>
+<th id="concHeader">Concentration (<span class="plain-greek">µ</span>M)</th>
+<th>ΔΔFPDc or<br>ΔΔAPD90c (ms)</th>
+<th></th>
+</tr>
+</thead>
+<tbody id="dataBody">
+<tr><td><input name="concentration[]" required="" step="any" type="number"/></td><td><input name="fpdc[]" required="" step="any" type="number"/></td><td><button onclick="removeRow(this)" type="button">−</button></td></tr>
+<tr><td><input name="concentration[]" required="" step="any" type="number"/></td><td><input name="fpdc[]" required="" step="any" type="number"/></td><td><button onclick="removeRow(this)" type="button">−</button></td></tr>
+<tr><td><input name="concentration[]" required="" step="any" type="number"/></td><td><input name="fpdc[]" required="" step="any" type="number"/></td><td><button onclick="removeRow(this)" type="button">−</button></td></tr>
+<tr><td><input name="concentration[]" required="" step="any" type="number"/></td><td><input name="fpdc[]" required="" step="any" type="number"/></td><td><button onclick="removeRow(this)" type="button">−</button></td></tr>
+</tbody>
+</table>
+<button onclick="addRow()" type="button">Add row</button>
+</div>
+<button type="submit">Calculate</button>
+</form>
+</div>
+</section></div><!-- /.col.left -->
+<!-- RIGHT COLUMN -->
+<div class="col right"><section class="charts">
+<h2>Program Outputs</h2>
+<div class="model-panel">
+<p id="modelSubtitle">The background calculation uses a logistic regression model. The model outputs are:</p>
+<div id="modelResults"></div>
+<canvas id="modelChart"></canvas>
+</div>
+</section><section class="hill-fit collapsible align-pair-right">
+<h2 id="hillSectionHeader" style="cursor:pointer;">▸ Hill Fit Curve (only available when input is filled in Cmax Interpolation)</h2>
+<div id="hillSectionContent" style="display:none;">
+<div class="chart-block"><canvas id="hillPlot"></canvas></div>
+</div>
+</section>
+<section class="references">
+<h2>References</h2>
+<ul><li>Blinova K, Dang Q, Millard D, Smith G, Pierson J, Guo L, Brock M, Lu HR, Kraushaar U, Zeng H, Shi H, Zhang X, Sawada K, Osada T, Kanda Y, Sekino Y, Pang L, Feaster TK, Kettenhofen R, Stockbridge N, Strauss DG, Gintant G. International Multisite Study of Human-Induced Pluripotent Stem Cell-Derived Cardiomyocytes for Drug Proarrhythmic Potential Assessment. <i>Cell Reports</i>. 2018 Sep 25;24(13):3582-3592. doi: <a href="https://doi.org/10.1016/j.celrep.2018.08.079" target="_blank">10.1016/j.celrep.2018.08.079</a>. PMID: 30257217; PMCID: PMC6226030</li></ul>
+</section>
+</div><!-- /.col.right -->
+</div><!-- /.two-col -->
+<footer style="text-align:center; color:#888; font-size:10pt; margin-top:20px;">Version 3.80 • 2025-09-12</footer>
+</div><!-- /.app -->
+</body>
+</html>

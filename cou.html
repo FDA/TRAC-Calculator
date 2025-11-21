@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Context of Use – TdP Risk Categorization Tool</title>
+<link href="style.css" rel="stylesheet"/>
+</head>
+<body>
+<div class="app">
+<header style="background-color: rgb(40,124,188); color: white; padding: 20px; margin-bottom: 20px;">
+<h1 id="coU" style="margin:0; text-transform:none;">
+    Context of Use (COU)
+  </h1>
+</header>
+<section>
+<h2>Context of Use</h2>
+<p>Delayed ventricular repolarization can create a proarrhythmic environment that results in life-threatening cardiac arrhythmias including Torsades de pointes (TdP). A significant challenge in drug development and regulatory decision making is determining the proarrhythmic potential of novel compounds.</p>
+<p>The TdP risk categorization calculator tool is used to assess the TdP risk of small molecule compounds in healthy adults to create human-relevant data for greater evidence of safety assurance for drug development and regulatory decision-making.</p>
+<p>Fitting of these results through machine learning algorithms were used to develop this open-source online calculator.</p>
+<p>This calculator receives compound-induced input predictors:</p>
+<ul>
+<li>Predictor 1, Did drug-induced arrhythmia-like event occur at any concentration? 0=no arrhythmia, 1=type A arrhythmia, 2=any other arrhythmia type. <a href="https://pubmed.ncbi.nlm.nih.gov/30257217/#&amp;gid=article-figures&amp;pid=figure-1-uid-0" target="_blank">(Example)</a></li>
+<li>Predictor 4, Maximum repolarization change (ms) observed at any concentration.</li>
+<li>Predictor 7, Drug-induced repolarization change (ms) at Cmax.</li>
+</ul>
+<p style="text-align:left; margin-left:0;">And provides as outputs:<br/><br/>
+TdP risk categorization estimated from in vitro experiments on hiPSC-CMs:<br/>
+</p>
+<div style="margin-left:20px;">
+<b>Model 1:</b><br/>
+1. Low TdP Risk probability estimation<br/>
+2. High or intermediate TdP risk probability estimation<br/>
+</div>
+</section>
+<section>
+<h2>Formulas for TdP risk categorization estimation</h2>
+<h3>Model 1:</h3>
+<p>Logit(P1/(1−P1)) = Intercept + Predictor1 + Predictor4 + Predictor7</p>
+<ul>
+<li>If Predictor1 = 0: Logit(P1/(1−P1)) = −0.1311 + 0 + 0.00687×ΔΔFPD<sub>c,max</sub> + 0.0232×FPD<sub>c</sub> prolongation.</li>
+<li>If Predictor1 = 1: Logit(P1/(1−P1)) = −0.1311 + 0.6583 + 0.00687×ΔΔFPD<sub>c,max</sub> + 0.0232×FPD<sub>c</sub> prolongation.</li>
+<li>If Predictor1 = 2: Logit(P1/(1−P1)) = −0.1311 + 1.7944 + 0.00687×ΔΔFPD<sub>c,max</sub> + 0.0232×FPD<sub>c</sub> prolongation.</li>
+</ul>
+</section>
+<section id="limitations">
+<h2>Limitations of Use</h2>
+<p>While this study provides valuable insight into potential TdP risk categories it has some limitations described here (<a href="https://pubmed.ncbi.nlm.nih.gov/30257217/" target="_blank">Blinova et al. 2018</a>).</p>
+<ol>
+<li>Well-exposure analysis studies were not conducted to measure free drug concentration in hiPSC-CM experiments. Future studies should consider detailed well-exposure analysis to determine the amount of nonspecific binding.</li>
+<li>The tool does not account for drug metabolites as such active drug metabolites should be investigated independently.</li>
+<li>Repolarization wave can be decreased (blunted) following exposure to some compounds making it challenging to detect FPD prolongation.</li>
+<li>Only acute (30 minutes) assay duration was investigated. However, chronic timepoints (e.g., days to weeks) may be of interest for specific compounds (e.g., hERG trafficking inhibitors).</li>
+<li>This study was not statistically powered to investigate the effect of the electrophysiological device (platform) on the hiPSC-CM assay’s predictivity of proarrhythmic drug potential.</li>
+<li>This study was conducted on spontaneous beating (non-paced) hiPSC-CMs. Utilization of field stimulated (paced) input parameters (<a href="https://pubmed.ncbi.nlm.nih.gov/30912807/" target="_blank">Patel et al. 2019</a>) will require additional verification and validation.</li>
+<li>To extend this tool to more complex in vitro models (e.g., co-culture, 3D, disease models) specific verification, validation and optimization will be required.</li>
+<li>This model was validated for two commercially available models iCell cardiomyocytes<sup>2</sup> and Cor.4U cardiomyocytes. Utilization of additional hiPSC-CM models will require additional verification and validation.</li>
+<li>Best practices recommendations suggest inclusion of the predicted Cmax in the selection of drug concentrations to determine Predictor 7 (<a href="https://pubmed.ncbi.nlm.nih.gov/32822771/" target="_blank">Gintant et al. 2020</a>). Extrapolation of Predictor 7 may confound TdP risk categorization outputs.</li>
+<li>In situations where repolarization (ΔΔFPDc or ΔΔAPD90c) is altered due to an arrhythmia-like event (e.g., early afterdepolarization EAD) repolarization duration should not be recorded or included in the analysis.</li>
+</ol>
+</section>
+<section>
+<h2>References</h2>
+<ul><li>Blinova K, Dang Q, Millard D, Smith G, Pierson J, Guo L, Brock M, Lu HR, Kraushaar U, Zeng H, Shi H, Zhang X, Sawada K, Osada T, Kanda Y, Sekino Y, Pang L, Feaster TK, Kettenhofen R, Stockbridge N, Strauss DG, Gintant G. International Multisite Study of Human-Induced Pluripotent Stem Cell-Derived Cardiomyocytes for Drug Proarrhythmic Potential Assessment. <i>Cell Reports</i>. 2018 Sep 25;24(13):3582-3592. doi: <a href="https://doi.org/10.1016/j.celrep.2018.08.079" target="_blank">10.1016/j.celrep.2018.08.079</a>. PMID: 30257217; PMCID: PMC6226030</li><li>Patel D, Stohlman J, Dang Q, Strauss DG, Blinova K. Assessment of Proarrhythmic Potential of Drugs in Optogenetically Paced Induced Pluripotent Stem Cell-Derived Cardiomyocytes. <i>Toxicological Sciences</i>. 2019 Jul 1;170(1):167-179. doi: <a href="https://doi.org/10.1093/toxsci/kfz076" target="_blank">10.1093/toxsci/kfz076</a>. PMID: 30912807</li><li>Gintant G, Pfeiffer Kaushik E, Feaster T, Stoelzle-Feix S, Kanda Y, Osada T, Smith G, Czysz K, Kettenhofen R, Lu HR, Cai B, Shi H, Herron TJ, Dang Q, Burton F, Pang L, Traebert M, Abassi Y, Beck Pierson J, Blinova K. Repolarization studies using human stem cell-derived cardiomyocytes: Validation studies and best practice recommendations. <i>Regulatory Toxicology and Pharmacology</i>. 2020 Nov;117:104756. doi: <a href="https://doi.org/10.1016/j.yrtph.2020.104756" target="_blank">10.1016/j.yrtph.2020.104756</a>. PMID: 32822771</li></ul>
+</section>
+</div>
+</body>
+</html>
