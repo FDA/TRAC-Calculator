@@ -8,7 +8,7 @@ This tool implements a logistic regression–based model trained on large, multi
 
 ## Running the Program
 
-You can directly run the program in this package by visiting [the live TRAC Calculator webpage](https://tkfeaster.github.io/TRAC-Calculator/) and follow the instructions on the page.
+You can directly run the program in this package by visiting [the live TRAC Calculator webpage](https://fda.github.io/TRAC-Calculator/) and follow the instructions on the page.
 
 ## Features
 
