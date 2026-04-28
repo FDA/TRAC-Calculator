@@ -113,6 +113,24 @@ document.addEventListener('DOMContentLoaded', function() {
       arr=parseInt(document.getElementById('arrhythmia').value);
       const cellEl=document.getElementById('celltype'); cell=cellEl?parseFloat(cellEl.value):0;
       
+      // Get user-specified Hill coefficient (with default of 1)
+      const hillCoeffInput = document.getElementById('hillCoefficient');
+      let userHillCoeff = hillCoeffInput ? parseFloat(hillCoeffInput.value) : 1;
+      
+      // Validate Hill coefficient
+      if (isNaN(userHillCoeff) || userHillCoeff <= 0) {
+        alert('WARNING\n[Hill Coefficient]\nHill coefficient must be a positive number. Using default value of 1.');
+        userHillCoeff = 1;
+        if (hillCoeffInput) hillCoeffInput.value = '1';
+      }
+      
+      // Reasonable range check
+      if (userHillCoeff < 0.1 || userHillCoeff > 10) {
+        if (!confirm(`WARNING\n[Hill Coefficient]\nHill coefficient of ${userHillCoeff} is outside typical range (0.1-10).\n\nDo you want to continue?`)) {
+          return;
+        }
+      }
+      
       document.querySelectorAll('#dataBody tr').forEach(r=>{const [ci,fi]=r.querySelectorAll('input'),c=parseFloat(ci.value),f=parseFloat(fi.value);if(!isNaN(c)&&!isNaN(f)){concs.push(c);fpdcs.push(f);}});
       // Check Cmax within input concentration range
       if (!isNaN(Cmax)) {
@@ -137,29 +155,104 @@ document.addEventListener('DOMContentLoaded', function() {
       const Top    = decreasing ? minY : maxY;
 
       const med = a => { const s=[...a].sort((x,y)=>x-y), m=Math.floor(s.length/2); return a.length%2?s[m]:(s[m-1]+s[m])/2; };
-      const guess = { Bottom, Top, EC50: med(concs), Hill: 1 }; // lock Hill coefficient at 1
+      const guess = { Bottom, Top, EC50: med(concs), Hill: userHillCoeff };
 
-      // Hill function with Hill fixed at 1
-      const hillf = (x,p) => p.Bottom + (p.Top - p.Bottom) / (1 + (p.EC50 / x));
+      // Hill function with variable Hill coefficient
+      const hillf = (x, p) => {
+        return p.Bottom + (p.Top - p.Bottom) / (1 + Math.pow(p.EC50 / x, p.Hill));
+      };
 
-      // Fit EC50 on a grid while Hill fixed at 1
+      // Fit EC50 using grid search with user-specified Hill coefficient
       let best = { ...guess }, minE = Infinity;
       const loss = p => fpdcs.reduce((s,y,i)=>s + Math.pow(hillf(concs[i],p) - y, 2), 0);
-      for (let ec = Math.min(...concs)*0.1; ec <= Math.max(...concs)*10; ec += (Math.max(...concs)-Math.min(...concs))/100) {
+      
+      // Grid search over EC50 values
+      const minConc = Math.min(...concs);
+      const maxConc = Math.max(...concs);
+      const searchMin = minConc * 0.01;  // Wider search range
+      const searchMax = maxConc * 100;
+      const numSteps = 200;  // More steps for better precision
+      
+      for (let i = 0; i <= numSteps; i++) {
+        // Logarithmic spacing for EC50 search
+        const logMin = Math.log10(searchMin);
+        const logMax = Math.log10(searchMax);
+        const ec = Math.pow(10, logMin + (i / numSteps) * (logMax - logMin));
+        
         const t = { ...guess, EC50: ec };
         const e = loss(t);
-        if (e < minE) { minE = e; best = t; }
+        if (e < minE) { 
+          minE = e; 
+          best = t; 
+        }
+      }
+      
+      // Refine search around best EC50 found
+      const refinedSearchMin = best.EC50 * 0.5;
+      const refinedSearchMax = best.EC50 * 2.0;
+      for (let i = 0; i <= 100; i++) {
+        const logMin = Math.log10(refinedSearchMin);
+        const logMax = Math.log10(refinedSearchMax);
+        const ec = Math.pow(10, logMin + (i / 100) * (logMax - logMin));
+        
+        const t = { ...guess, EC50: ec };
+        const e = loss(t);
+        if (e < minE) { 
+          minE = e; 
+          best = t; 
+        }
       }
 
-      const FPDc = hillf(Cmax||Math.min(...concs), best);p7=FPDc;document.getElementById('predictor1').value=String(arr);document.getElementById('predictor4').value=isFinite(p4)?Number(p4).toFixed(4):'';document.getElementById('predictor7').value=isFinite(p7)?Number(p7).toFixed(4):'';validatePredictorRanges();
+      const FPDc = hillf(Cmax||Math.min(...concs), best);
+      p7=FPDc;
+      document.getElementById('predictor1').value=String(arr);
+      document.getElementById('predictor4').value=isFinite(p4)?Number(p4).toFixed(4):'';
+      document.getElementById('predictor7').value=isFinite(p7)?Number(p7).toFixed(4):'';
+      validatePredictorRanges();
+      
       if(p4===0&&p7===0){}
       const Thr=assay==='30'?Bottom*1.103:Bottom*1.0794;
       const logM=assay==='30'?(Thr+0.35)/0.92:(Thr+0.17)/0.93;
-      (()=>{const el=document.getElementById('estimatedQTc'); if(el){ el.innerHTML=`<strong>QTc (log M):</strong> ${logM.toFixed(4)}<br><strong>Conc >10ms QT:</strong> ${Math.pow(10,logM).toFixed(4)} µM`; }})();
+      (()=>{
+        const el=document.getElementById('estimatedQTc'); 
+        if(el){ 
+          el.innerHTML=`<strong>QTc (log M):</strong> ${logM.toFixed(4)}<br><strong>Conc >10ms QT:</strong> ${Math.pow(10,logM).toFixed(4)} µM<br><strong>Hill Coefficient:</strong> ${best.Hill.toFixed(2)}<br><strong>EC50:</strong> ${best.EC50.toFixed(4)} µM`; 
+        }
+      })();
+      
       const fitX=Array.from({length:100},(_,i)=>Math.pow(10,Math.log10(Math.max(0.001,Math.min(...concs)))+i*(Math.log10(Math.max(...concs))-Math.log10(Math.max(0.001,Math.min(...concs))))/99));
       const fitY=fitX.map(x=>hillf(x,best));
       if(hillChart)hillChart.destroy();
-      hillChart=new Chart(document.getElementById('hillPlot'),{type:'line',data:{labels:fitX,datasets:[{label:'Hill Fit',data:fitX.map((x,i)=>({x,y:fitY[i]})),borderWidth:3,fill:false},{label:'Data',type:'scatter',data:concs.map((x,i)=>({x,y:fpdcs[i]})),pointRadius:4},{label:'Cmax',type:'scatter',data:[{x:Cmax,y:FPDc}],pointRadius:6}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{type:'logarithmic', grid:{lineWidth:5}, ticks:{font:{size:20}}, title:{display:true, text:'Concentration (µM)', font:{size:18}}},y:{grid:{lineWidth:5}, ticks:{font:{size:20}}, title:{display:true, text:'ΔΔFPDc or ΔΔAPD90c (ms)', font:{size:18}}}}}});
+      hillChart=new Chart(document.getElementById('hillPlot'),{
+        type:'line',
+        data:{
+          labels:fitX,
+          datasets:[
+            {label:`Hill Fit (n=${best.Hill.toFixed(2)})`,data:fitX.map((x,i)=>({x,y:fitY[i]})),borderWidth:3,fill:false,borderColor:'rgb(75, 192, 192)'},
+            {label:'Data',type:'scatter',data:concs.map((x,i)=>({x,y:fpdcs[i]})),pointRadius:4,backgroundColor:'rgb(54, 162, 235)'},
+            {label:'Cmax',type:'scatter',data:[{x:Cmax,y:FPDc}],pointRadius:6,backgroundColor:'rgb(255, 99, 132)'}
+          ]
+        },
+        options:{
+          responsive:true,
+          maintainAspectRatio:false,
+          scales:{
+            x:{type:'logarithmic', grid:{lineWidth:5}, ticks:{font:{size:20}}, title:{display:true, text:'Concentration (µM)', font:{size:18}}},
+            y:{grid:{lineWidth:5}, ticks:{font:{size:20}}, title:{display:true, text:'ΔΔFPDc or ΔΔAPD90c (ms)', font:{size:18}}}
+          },
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top'
+            },
+            title: {
+              display: true,
+              text: `EC50 = ${best.EC50.toFixed(4)} µM, Hill = ${best.Hill.toFixed(2)}`,
+              font: { size: 14 }
+            }
+          }
+        }
+      });
     }
     
     // model probabilities (Model 1 only)
