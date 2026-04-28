@@ -18,10 +18,10 @@ You can directly run the program in this package by visiting [the live TRAC Calc
   3. Repolarization change (ms) at expected *Cmax*
 - **Two input modes**:
   - Direct predictor input  
-  - *Cmax* interpolation with concentration–response curve fitting (Hill curve with Hill coefficient fixed at 1)
+  - *Cmax* interpolation with concentration–response curve fitting (Hill curve with Hill coefficient initialized to 1)
 - **Program outputs**:
   - Predicted probability of **Low risk** vs **High or Intermediate risk**
-  - Bar chart of risk probabilities
+  - Bar chart of risk probabilities with confidence intervals for the High or Intermediate TdP risk probability
   - Hill-fit concentration–response plot with *Cmax* overlay
 - **Context of Use (COU)** and **Limitations** documented with links to key references.
 
@@ -32,22 +32,33 @@ You can directly run the program in this package by visiting [the live TRAC Calc
 **Developer:** Marshall Ma (marshma@bu.edu, shendu.ma@hhs.fda.gov)  
 **Advisor(s):** TK Feaster (tromondae.feaster@hhs.fda.gov), Ksenia Blinova (ksenia.blinova@hhs.fda.gov)
 
+---
 ## Getting Started
 
 The TRAC Calculator is a browser-based app (no installation required). Clone or download this repository and open `index.html` in a web browser.
 
 ### Input Instructions
 1. Review the [Context of Use](cou.html#coU) and [Limitations of Use](cou.html#limitations).
-2. Enter predictor values in the **Predictor Inputs** panel.  
-   - Predictor ranges are shown in the input fields upon startup.
+2. Enter predictor values in the **Predictor Inputs** panel. Valid ranges for each predictor (also shown in the input fields upon startup) are: 
+   - Predictor 1: 0, 1, or 2,
+   - Predictor 4: -372 to 1280 (ms),
+   - Predictor 7: -100 to 303 (ms).
 3. Optionally, use the **Cmax Interpolation** panel to fit a concentration–FPDc curve and automatically generate predictors.
-4. Click **Calculate** to view the outputs.
+   - At least 4 pairs of concentration ΔΔFPDc or ΔΔAPD90c are needed.
+5. Click **Calculate** to view the outputs.
 
 ### Outputs
 - Logistic regression model results are displayed under **Program Outputs**.  
 - Graphical plots update dynamically:
-  - Risk probability bar chart
+  - Risk probability bar chart with confidence intervals
   - Hill-fit concentration–response curve (if Cmax interpolation is used)
+
+---
+
+## Software dependencies
+- Chart.js (v4.4.1), 
+- chartjs-plugin-annotation (v3.0.1), and 
+- mathjs (v11.11.0) 
 
 ---
 
