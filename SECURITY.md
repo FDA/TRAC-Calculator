@@ -33,7 +33,3 @@ When contributing to this repository:
 - Review security advisories for dependencies
 
 ---
-
-**Disclaimer:** This repository contains code developed for research, regulatory science, or public health purposes. The code is provided "as-is" without warranty. Use in production systems should follow your organization's security assessment processes.
-
-**Last Updated:** June 8, 2026
