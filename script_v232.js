@@ -8,57 +8,233 @@ document.addEventListener('DOMContentLoaded', function() {
   window.ciLower = null;
   window.ciUpper = null;
 
-  // Covariance matrix from R code (TRAC_output_CI.R)
+  // ──────────────────────────────────────────────────────────────────────────
+  // Model parameters
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // Beta coefficients: [Intercept, pred4, pred7, pred1_A, pred1_O]
+  const betaHat = [-0.1311, 0.00687, 0.0232, 0.6583, 1.7944];
+
+  // Covariance matrix (5x5) from R code
   const covBeta = [
-    [0.024975,  0.000023, -0.00019, -0.0238,  -0.02417],
-    [0.000023,  2.636e-6, -4.31e-6, -0.00014, -0.00015],
-    [-0.00019, -4.31e-6,  0.000055, -0.00034, -0.00022],
-    [-0.0238,  -0.00014, -0.00034,  0.188749,  0.037828],
-    [-0.02417, -0.00015, -0.00022,  0.037828,  0.176284]
+    [ 0.024975,  0.000023, -0.00019, -0.0238,  -0.02417],
+    [ 0.000023,  2.636e-6, -4.31e-6, -0.00014, -0.00015],
+    [-0.00019,  -4.31e-6,  0.000055, -0.00034, -0.00022],
+    [-0.0238,   -0.00014, -0.00034,  0.188749,  0.037828],
+    [-0.02417,  -0.00015, -0.00022,  0.037828,  0.176284]
   ];
 
-  // Function to calculate confidence intervals
-  function calculateCI(arr, p4, p7, alpha = 0.05) {
-    // Create design vector based on arrhythmia type
-    let X_new;
-    if (arr === 1) {
-      X_new = [1, p4, p7, 1, 0];  // Type A arrhythmia
-    } else if (arr === 2) {
-      X_new = [1, p4, p7, 0, 1];  // Other arrhythmia type
-    } else {
-      X_new = [1, p4, p7, 0, 0];  // No arrhythmia (reference)
-    }
-    
-    // Calculate variance of linear predictor: X^T * Cov * X
-    let var_eta = 0;
-    for (let i = 0; i < 5; i++) {
-      for (let j = 0; j < 5; j++) {
-        var_eta += X_new[i] * covBeta[i][j] * X_new[j];
+  // Seeded PRNG (Mulberry32)
+  function mulberry32(seed) {
+    return function() {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // Instantiate with a fixed seed
+  const RNG = mulberry32(42);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Box-Muller standard normal sampler (no external dependency)
+  // ──────────────────────────────────────────────────────────────────────────
+  function randNorm() {
+    // Box-Muller transform
+    let u, v, s;
+    do {
+      u = 2 * RNG() - 1;
+      v = 2 * RNG() - 1;
+      s = u * u + v * v;
+    } while (s >= 1 || s === 0);
+    return u * Math.sqrt(-2 * Math.log(s) / s);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Cholesky decomposition of a symmetric positive-definite matrix
+  // Returns upper-triangular L such that L^T L = A  (matching R's chol())
+  // ──────────────────────────────────────────────────────────────────────────
+  function choleskyUpper(A) {
+    const n = A.length;
+    // Initialise n×n result with zeros
+    const L = Array.from({length: n}, () => new Array(n).fill(0));
+    for (let j = 0; j < n; j++) {
+      let s = A[j][j];
+      for (let k = 0; k < j; k++) s -= L[k][j] * L[k][j];
+      if (s <= 0) throw new Error('Matrix is not positive definite');
+      L[j][j] = Math.sqrt(s);
+      for (let i = j + 1; i < n; i++) {
+        let t = A[j][i];
+        for (let k = 0; k < j; k++) t -= L[k][j] * L[k][i];
+        L[j][i] = t / L[j][j];
       }
     }
-    
-    const se_eta = Math.sqrt(var_eta);
-    
-    // Linear predictor (logit scale)
-    const map1 = [0, 0.6583, 1.7944];
-    const eta = -0.1311 + map1[arr] + 0.00687 * p4 + 0.0232 * p7;
-    
-    // Critical value for 95% CI (z-score for 97.5th percentile)
-    const z_crit = 1.96;
-    
-    // CI on logit scale
-    const eta_lower = eta - z_crit * se_eta;
-    const eta_upper = eta + z_crit * se_eta;
-    
-    // Transform to probability scale
-    const prob_lower = 1 / (1 + Math.exp(-eta_lower));
-    const prob_upper = 1 / (1 + Math.exp(-eta_upper));
-    
-    return { 
-      prob_lower, 
+    return L;   // upper-triangular
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Multivariate normal sampler
+  //   n     : number of draws
+  //   mu    : mean vector (length p)
+  //   Sigma : covariance matrix (p×p)
+  // Returns : n×p array of row-vectors
+  // ──────────────────────────────────────────────────────────────────────────
+  function rmvnormBase(n, mu, Sigma) {
+    const p = mu.length;
+    const L = choleskyUpper(Sigma);   // upper Cholesky factor  (p×p)
+    const samples = [];
+    for (let i = 0; i < n; i++) {
+      // Draw p independent standard normals
+      const z = Array.from({length: p}, () => randNorm());
+      // Multiply:  z %*% L  (row-vector times upper-triangular matrix)
+      const row = new Array(p).fill(0);
+      for (let col = 0; col < p; col++) {
+        for (let k = 0; k <= col; k++) {       // L is upper-triangular: L[k][col]
+          row[col] += z[k] * L[k][col];
+        }
+      }
+      // Add mean
+      samples.push(row.map((v, j) => v + mu[j]));
+    }
+    return samples;   // n×p  (array of arrays)
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Approximate qnorm (inverse normal CDF) — Abramowitz & Stegun rational
+  // approximation;
+  // ──────────────────────────────────────────────────────────────────────────
+  function qnorm(p) {
+    if (p <= 0) return -Infinity;
+    if (p >= 1) return  Infinity;
+    if (p === 0.5) return 0;
+    const sign = p < 0.5 ? -1 : 1;
+    const q = Math.min(p, 1 - p);
+    const t = Math.sqrt(-2 * Math.log(q));
+    const c0 = 2.515517, c1 = 0.802853, c2 = 0.010328;
+    const d1 = 1.432788, d2 = 0.189269, d3 = 0.001308;
+    const num = c0 + c1 * t + c2 * t * t;
+    const den = 1 + d1 * t + d2 * t * t + d3 * t * t * t;
+    return sign * (t - num / den);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Quantile of a sorted array
+  // ──────────────────────────────────────────────────────────────────────────
+  function quantile(arr, prob) {
+    const sorted = [...arr].sort((a, b) => a - b);
+    const n = sorted.length;
+    const h = (n - 1) * prob;
+    const lo = Math.floor(h);
+    const hi = Math.ceil(h);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (h - lo);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Standard deviation of an array
+  // ──────────────────────────────────────────────────────────────────────────
+  function stdDev(arr) {
+    const n = arr.length;
+    const mean = arr.reduce((s, v) => s + v, 0) / n;
+    const variance = arr.reduce((s, v) => s + (v - mean) * (v - mean), 0) / (n - 1);
+    return Math.sqrt(variance);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // calculateCI
+  //
+  //   arr    : arrhythmia type  (0 = none, 1 = Type A, 2 = other)
+  //   p4     : pred4 value (maximum repolarization, ms)
+  //   p7     : pred7 value (repolarization at Cmax, ms)
+  //   sdP4   : SD of pred4 measurement error  (default 0 → delta method)
+  //   sdP7   : SD of pred7 measurement error  (default 0 → delta method)
+  //   alpha  : significance level             (default 0.05 → 95% CI)
+  //   nSim   : Monte Carlo draws              (default 10 000)
+  //
+  // Returns:
+  //   { prob_lower, prob_upper, se_eta, eta, probability, method }
+  // ──────────────────────────────────────────────────────────────────────────
+  function calculateCI(arr, p4, p7, sdP4 = 0, sdP7 = 0, alpha = 0.05, nSim = 10000) {
+
+    // Encode arrhythmia type as dummy variables
+    const pred1A = (arr === 1) ? 1 : 0;
+    const pred1O = (arr === 2) ? 1 : 0;
+
+    // ── BRANCH 1: No measurement error → delta method ─────────────────────
+    if (sdP4 === 0 && sdP7 === 0) {
+
+      const X_new = [1, p4, p7, pred1A, pred1O];
+
+      // Linear predictor:  eta = X^T · betaHat
+      const eta = X_new.reduce((s, x, i) => s + x * betaHat[i], 0);
+
+      // Variance:  var_eta = X^T · covBeta · X
+      let var_eta = 0;
+      for (let i = 0; i < 5; i++) {
+        for (let j = 0; j < 5; j++) {
+          var_eta += X_new[i] * covBeta[i][j] * X_new[j];
+        }
+      }
+      const se_eta  = Math.sqrt(var_eta);
+      const z_crit  = qnorm(1 - alpha / 2);   // e.g. 1.95996 for alpha=0.05
+
+      const eta_lower = eta - z_crit * se_eta;
+      const eta_upper = eta + z_crit * se_eta;
+
+      const probability  = 1 / (1 + Math.exp(-eta));
+      const prob_lower   = 1 / (1 + Math.exp(-eta_lower));
+      const prob_upper   = 1 / (1 + Math.exp(-eta_upper));
+
+      return {
+        probability,
+        prob_lower,
+        prob_upper,
+        se_eta,
+        eta,
+        method:          'Delta method (no measurement error)',
+        n_sim:           null,
+        confidence_level: 1 - alpha
+      };
+    }
+
+    // ── BRANCH 2: Measurement error present → Monte Carlo ─────────────────
+
+    // Draw beta samples  (nSim × 5)  — models parameter uncertainty
+    const betaSamples = rmvnormBase(nSim, betaHat, covBeta);
+
+    // Draw predictor samples — models measurement uncertainty
+    // rnorm(n, mean, sd)  using Box-Muller
+    const pred4Samples = Array.from({length: nSim}, () => p4 + (sdP4 > 0 ? randNorm() * sdP4 : 0));
+    const pred7Samples = Array.from({length: nSim}, () => p7 + (sdP7 > 0 ? randNorm() * sdP7 : 0));
+
+    // Row-wise dot product: log_odds_i = betaSamples[i] · X_i
+    const logOddsSamples = betaSamples.map((beta, i) => {
+      const X = [1, pred4Samples[i], pred7Samples[i], pred1A, pred1O];
+      return beta.reduce((s, b, j) => s + b * X[j], 0);
+    });
+
+    // Convert to probability scale
+    const pSamples = logOddsSamples.map(lo => 1 / (1 + Math.exp(-lo)));
+
+    // Summarise
+    const probability  = pSamples.reduce((s, v) => s + v, 0) / nSim;
+    const prob_lower   = quantile(pSamples, alpha / 2);
+    const prob_upper   = quantile(pSamples, 1 - alpha / 2);
+
+    // Point estimate on logit scale using observed X and mean beta
+    const X_obs = [1, p4, p7, pred1A, pred1O];
+    const eta   = X_obs.reduce((s, x, i) => s + x * betaHat[i], 0);
+    const se_eta_combined = stdDev(logOddsSamples);
+
+    return {
+      probability,
+      prob_lower,
       prob_upper,
-      se_eta,
-      eta
+      se_eta:           se_eta_combined,
+      eta,
+      method:           'Monte Carlo (modeling + measurement error)',
+      n_sim:            nSim,
+      confidence_level: 1 - alpha
     };
   }
 
@@ -92,19 +268,30 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // switch unit
-  document.getElementById('switchCmaxUnit').addEventListener('click',()=>{const inp=document.getElementById('cmax'), lbl=document.getElementById('cmaxLabel');let v=parseFloat(inp.value); if(isNaN(v))return;if(cmaxIsNM){v/=1000;lbl.innerHTML='Cmax (<span class="plain-greek">µ</span>M)';const ch=document.getElementById('concHeader'); if(ch) ch.innerHTML='Concentration (<span class="plain-greek">µ</span>M)';}else{v*=1000;lbl.innerText='Cmax (nM)'; const ch=document.getElementById('concHeader'); if(ch) ch.innerText='Concentration (nM)';}inp.value=v.toFixed(4); cmaxIsNM=!cmaxIsNM;});
+  document.getElementById('switchCmaxUnit').addEventListener('click',()=>{const inp=document.getElementById('cmax'), lbl=document.getElementById('cmaxLabel');let v=parseFloat(inp.value); if(isNaN(v))return;if(cmaxIsNM){v/=1000;lbl.innerHTML='Cmax (<span class=\"plain-greek\">\u00b5</span>M)';const ch=document.getElementById('concHeader'); if(ch) ch.innerHTML='Concentration (<span class=\"plain-greek\">\u00b5</span>M)';}else{v*=1000;lbl.innerText='Cmax (nM)'; const ch=document.getElementById('concHeader'); if(ch) ch.innerText='Concentration (nM)';}inp.value=v.toFixed(4); cmaxIsNM=!cmaxIsNM;});
 
-  window.addRow=()=>{const tb=document.getElementById('dataBody'),r=document.createElement('tr');r.innerHTML='<td><input name="concentration[]" type="number" step="any" required></td><td><input name="fpdc[]" type="number" step="any" required></td><td><button type="button" onclick="removeRow(this)">−</button></td>';tb.appendChild(r);};
+  window.addRow=()=>{const tb=document.getElementById('dataBody'),r=document.createElement('tr');r.innerHTML='<td><input name="concentration[]" type="number" step="any" required></td><td><input name="fpdc[]" type="number" step="any" required></td><td><button type="button" onclick="removeRow(this)">\u2212</button></td>';tb.appendChild(r);};
   window.removeRow=btn=>btn.closest('tr').remove();
   document.getElementById('predictorCalcBtn').addEventListener('click',()=>calculate(true));
   document.getElementById('riskForm').addEventListener('submit',e=>{e.preventDefault();calculate(false);});
 
   function calculate(predOnly){
     let arr,p4,p7,cell=0,assay='30',Cmax,concs=[],fpdcs=[];
+    let sdP4 = 0, sdP7 = 0;
+
     if(predOnly){
       arr=parseInt(document.getElementById('predictor1').value);
       p4=parseFloat(document.getElementById('predictor4').value);
       p7=parseFloat(document.getElementById('predictor7').value);
+
+      // Read optional SD inputs
+      const sdP4el = document.getElementById('sdPredictor4');
+      const sdP7el = document.getElementById('sdPredictor7');
+      sdP4 = sdP4el && sdP4el.value !== '' ? parseFloat(sdP4el.value) : 0;
+      sdP7 = sdP7el && sdP7el.value !== '' ? parseFloat(sdP7el.value) : 0;
+      if (isNaN(sdP4) || sdP4 < 0) sdP4 = 0;
+      if (isNaN(sdP7) || sdP7 < 0) sdP7 = 0;
+
       if(isNaN(arr)||isNaN(p4)||isNaN(p7)){return;}validatePredictorRanges();const c=document.getElementById('cmax'); if(c) c.value='';document.querySelectorAll('#dataBody input').forEach(el=>el.value='');
       if(p4===0&&p7===0){}
     } else {
@@ -137,11 +324,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const minConc = Math.min(...concs);
         const maxConc = Math.max(...concs);
         if (Cmax < minConc || Cmax > maxConc) {
-          alert('STOP\n[Cmax Interpolation]\nPlease enter Concentration – Repolarization values with a range that covers the Cmax.');
+          alert('STOP\n[Cmax Interpolation]\nPlease enter Concentration \u2013 Repolarization values with a range that covers the Cmax.');
           return;
         }
       }
-      if(concs.length<4){alert('STOP\n[Cmax Interpolation]\nPlease enter at least 4 pairs of Concentration – Repolarization values for the Hill\'s Fit to converge.');return;}
+      if(concs.length<4){alert('STOP\n[Cmax Interpolation]\nPlease enter at least 4 pairs of Concentration \u2013 Repolarization values for the Hill\'s Fit to converge.');return;}
       p4=Math.max(...fpdcs);
       // Determine trend and set Top/Bottom to allow negative or positive Hill fit
       const minY = Math.min(...fpdcs), maxY = Math.max(...fpdcs);
@@ -169,22 +356,17 @@ document.addEventListener('DOMContentLoaded', function() {
       // Grid search over EC50 values
       const minConc = Math.min(...concs);
       const maxConc = Math.max(...concs);
-      const searchMin = minConc * 0.01;  // Wider search range
+      const searchMin = minConc * 0.01;
       const searchMax = maxConc * 100;
-      const numSteps = 200;  // More steps for better precision
+      const numSteps = 200;
       
       for (let i = 0; i <= numSteps; i++) {
-        // Logarithmic spacing for EC50 search
         const logMin = Math.log10(searchMin);
         const logMax = Math.log10(searchMax);
         const ec = Math.pow(10, logMin + (i / numSteps) * (logMax - logMin));
-        
         const t = { ...guess, EC50: ec };
         const e = loss(t);
-        if (e < minE) { 
-          minE = e; 
-          best = t; 
-        }
+        if (e < minE) { minE = e; best = t; }
       }
       
       // Refine search around best EC50 found
@@ -194,13 +376,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const logMin = Math.log10(refinedSearchMin);
         const logMax = Math.log10(refinedSearchMax);
         const ec = Math.pow(10, logMin + (i / 100) * (logMax - logMin));
-        
         const t = { ...guess, EC50: ec };
         const e = loss(t);
-        if (e < minE) { 
-          minE = e; 
-          best = t; 
-        }
+        if (e < minE) { minE = e; best = t; }
       }
 
       const FPDc = hillf(Cmax||Math.min(...concs), best);
@@ -216,7 +394,7 @@ document.addEventListener('DOMContentLoaded', function() {
       (()=>{
         const el=document.getElementById('estimatedQTc'); 
         if(el){ 
-          el.innerHTML=`<strong>QTc (log M):</strong> ${logM.toFixed(4)}<br><strong>Conc >10ms QT:</strong> ${Math.pow(10,logM).toFixed(4)} µM<br><strong>Hill Coefficient:</strong> ${best.Hill.toFixed(2)}<br><strong>EC50:</strong> ${best.EC50.toFixed(4)} µM`; 
+          el.innerHTML=`<strong>QTc (log M):</strong> ${logM.toFixed(4)}<br><strong>Conc >10ms QT:</strong> ${Math.pow(10,logM).toFixed(4)} \u00b5M<br><strong>Hill Coefficient:</strong> ${best.Hill.toFixed(2)}<br><strong>EC50:</strong> ${best.EC50.toFixed(4)} \u00b5M`; 
         }
       })();
       
@@ -237,17 +415,14 @@ document.addEventListener('DOMContentLoaded', function() {
           responsive:true,
           maintainAspectRatio:false,
           scales:{
-            x:{type:'logarithmic', grid:{lineWidth:5}, ticks:{font:{size:20}}, title:{display:true, text:'Concentration (µM)', font:{size:18}}},
-            y:{grid:{lineWidth:5}, ticks:{font:{size:20}}, title:{display:true, text:'ΔΔFPDc or ΔΔAPD90c (ms)', font:{size:18}}}
+            x:{type:'logarithmic', grid:{lineWidth:5}, ticks:{font:{size:20}}, title:{display:true, text:'Concentration (\u00b5M)', font:{size:18}}},
+            y:{grid:{lineWidth:5}, ticks:{font:{size:20}}, title:{display:true, text:'\u0394\u0394FPDc or \u0394\u0394APD90c (ms)', font:{size:18}}}
           },
           plugins: {
-            legend: {
-              display: true,
-              position: 'top'
-            },
+            legend: { display: true, position: 'top' },
             title: {
               display: true,
-              text: `EC50 = ${best.EC50.toFixed(4)} µM, Hill = ${best.Hill.toFixed(2)}`,
+              text: `EC50 = ${best.EC50.toFixed(4)} \u00b5M, Hill = ${best.Hill.toFixed(2)}`,
               font: { size: 14 }
             }
           }
@@ -261,10 +436,11 @@ document.addEventListener('DOMContentLoaded', function() {
     Prob1=1/(1+Math.exp(-logit1));
     if(Prob1<0){}
     
-    // Calculate confidence intervals
-    const ciResults = calculateCI(arr, p4, p7);
+    // Calculate confidence intervals (uses delta method or Monte Carlo depending on SD inputs)
+    const ciResults = calculateCI(arr, p4, p7, sdP4, sdP7);
     window.ciLower = ciResults.prob_lower;
     window.ciUpper = ciResults.prob_upper;
+    window.ciMethod = ciResults.method;
     
     updateModelPanel();
   }
@@ -281,6 +457,7 @@ function updateModelPanel(){
   // Get CI values
   const ciLower = window.ciLower !== null ? window.ciLower : Prob1;
   const ciUpper = window.ciUpper !== null ? window.ciUpper : Prob1;
+  const ciMethod = window.ciMethod || 'Delta method (no measurement error)';
   
   if(title) title.innerText='Model 1 TdP Risk';
   if(sub)   sub.innerHTML='The background calculation uses a logistic regression model. The model outputs are:';
@@ -288,8 +465,9 @@ function updateModelPanel(){
   
   if(res){ 
     res.innerHTML = '<ul style="margin-left:20px;">' +
-      `<li><strong>High or Intermediate TdP Risk Probability:</strong> ${data[0].toFixed(1)}% <span style="color:#666;">(95% CI: ${(ciLower*100).toFixed(1)}% – ${(ciUpper*100).toFixed(1)}%)</span></li>` +
+      `<li><strong>High or Intermediate TdP Risk Probability:</strong> ${data[0].toFixed(1)}% <span style="color:#666;">(95% CI: ${(ciLower*100).toFixed(1)}% \u2013 ${(ciUpper*100).toFixed(1)}%)</span></li>` +
       `<li><strong>Low TdP Risk Probability:</strong> ${data[1].toFixed(1)}%</li>` +
+      `<li style="font-size:0.85em; color:#555;"><em>CI method: ${ciMethod}</em></li>` +
       '</ul>'; 
   }
   
@@ -303,7 +481,7 @@ function updateModelPanel(){
       if (window.ciLower === null || window.ciUpper === null) return;
       
       const ctx = chart.ctx;
-      const meta = chart.getDatasetMeta(0); // High/Intermediate risk dataset
+      const meta = chart.getDatasetMeta(0);
       const bar = meta.data[0];
       
       if (!bar) return;
@@ -311,33 +489,28 @@ function updateModelPanel(){
       const x = bar.x;
       const yScale = chart.scales.y;
       
-      // Calculate error bar positions
       const probPercent = Prob1 * 100;
       const lowerPercent = ciLower * 100;
       const upperPercent = ciUpper * 100;
       
       const yCenter = yScale.getPixelForValue(probPercent);
-      const yLower = yScale.getPixelForValue(lowerPercent);
-      const yUpper = yScale.getPixelForValue(upperPercent);
+      const yLower  = yScale.getPixelForValue(lowerPercent);
+      const yUpper  = yScale.getPixelForValue(upperPercent);
       
-      // Draw error bar
       ctx.save();
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
       ctx.lineWidth = 2.5;
       
-      // Vertical line
       ctx.beginPath();
       ctx.moveTo(x, yLower);
       ctx.lineTo(x, yUpper);
       ctx.stroke();
       
-      // Lower cap
       ctx.beginPath();
       ctx.moveTo(x - 8, yLower);
       ctx.lineTo(x + 8, yLower);
       ctx.stroke();
       
-      // Upper cap
       ctx.beginPath();
       ctx.moveTo(x - 8, yUpper);
       ctx.lineTo(x + 8, yUpper);
@@ -364,7 +537,7 @@ function updateModelPanel(){
           callbacks: { 
             label: ctx => {
               if (ctx.datasetIndex === 0 && window.ciLower !== null) {
-                return `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}% (95% CI: ${(ciLower*100).toFixed(1)}% – ${(ciUpper*100).toFixed(1)}%)`;
+                return `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}% (95% CI: ${(ciLower*100).toFixed(1)}% \u2013 ${(ciUpper*100).toFixed(1)}%)`;
               }
               return `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`;
             }
