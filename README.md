@@ -43,14 +43,16 @@ The TRAC Calculator is a browser-based app (no installation required). Clone or 
    - Predictor 1: 0, 1, or 2,
    - Predictor 4: -372 to 1280 (ms),
    - Predictor 7: -100 to 303 (ms).
-3. Optionally, use the **Cmax Interpolation** panel to fit a concentration–FPDc curve and automatically generate predictors.
+3. Optionally, enter predictor standard deviation (SD) values (greater than 0) in the corresponding **SD** input boxes.
+   - If provided, Monte Carlo sampling is used for confidence interval calculations. Otherwise, the Delta method (no measurement error) is used.
+4. Optionally, use the **Cmax Interpolation** panel to fit a concentration–FPDc curve and automatically generate predictors.
    - At least 4 pairs of concentration ΔΔFPDc or ΔΔAPD90c are needed.
 5. Click **Calculate** to view the outputs.
 
 ### Outputs
 - Logistic regression model results are displayed under **Program Outputs**.  
 - Graphical plots update dynamically:
-  - Risk probability bar chart with confidence intervals
+  - Risk probability bar chart with confidence intervals.
   - Hill-fit concentration–response curve (if Cmax interpolation is used)
 
 ---
